@@ -1,0 +1,354 @@
+---
+  - hosts: kubevirt-etcd1
+    become: yes
+    vars: 
+      HOST0 : 10.26.37.141
+      HOST1 : 10.26.37.173
+      HOST2 : 10.26.37.185
+      KUBEMAS : 10.26.37.193
+      ETCDHOSTS : [ "{{HOST0}}", "{{HOST1}}", "{{HOST2}}" ]
+      NAMES : [ "kubevirt-etcd1", "kubevirt-etcd2" ,"kubevirt-etcd3" ]
+    tasks:
+    - name: Create temp directories 
+      file:
+        path: /tmp/{{item}}/
+        state: directory
+      with_items: [ "{{HOST0}}" , "{{HOST1}}" , "{{HOST2}}" ]
+
+    - name : create kubeadm configuration for all hosts
+      shell:
+        cmd : | 
+               cat << EOF > /tmp/{{HOST0}}/kubeadmcfg.yaml
+               apiVersion: "kubeadm.k8s.io/v1beta1"
+               kind: ClusterConfiguration
+               etcd:
+                local:
+                    serverCertSANs:
+                    - "{{HOST0}}"
+                    peerCertSANs:
+                    - "{{HOST0}}"
+                    extraArgs:
+                        initial-cluster: {{NAMES[0]}}=https://{{HOST0}}:2380,{{NAMES[1]}}=https://{{HOST1}}:2380,{{NAMES[2]}}=https://{{HOST2}}:2380
+                        initial-cluster-state: new
+                        name: {{NAMES[0]}}
+                        listen-peer-urls: https://{{HOST0}}:2380
+                        listen-client-urls: https://{{HOST0}}:2379
+                        advertise-client-urls: https://{{HOST0}}:2379
+                        initial-advertise-peer-urls: https://{{HOST0}}:2380 
+                        # EOF 
+    - name : create kubeadm configuration for all hosts
+      shell:
+        cmd : |
+               cat << EOF > /tmp/{{HOST1}}/kubeadmcfg.yaml
+               apiVersion: "kubeadm.k8s.io/v1beta1"
+               kind: ClusterConfiguration
+               etcd:
+                local:
+                    serverCertSANs:
+                    - "{{HOST1}}"
+                    peerCertSANs:
+                    - "{{HOST1}}"
+                    extraArgs:
+                         initial-cluster: {{NAMES[0]}}=https://{{HOST0}}:2380,{{NAMES[1]}}=https://{{HOST1}}:2380,{{NAMES[2]}}=https://{{HOST2}}:2380
+                         initial-cluster-state: new
+                         name: {{NAMES[1]}}
+                         listen-peer-urls: https://{{HOST1}}:2380
+                         listen-client-urls: https://{{HOST1}}:2379
+                         advertise-client-urls: https://{{HOST1}}:2379
+                         initial-advertise-peer-urls: https://{{HOST1}}:2380
+                         #            EOF          
+    
+    - name : create kubeadm configuration for all hosts
+      shell:
+        cmd : |
+               cat << EOF > /tmp/{{HOST2}}/kubeadmcfg.yaml
+               apiVersion: "kubeadm.k8s.io/v1beta1"
+               kind: ClusterConfiguration
+               etcd:
+                local:
+                    serverCertSANs:
+                    - "{{HOST2}}"
+                    peerCertSANs:
+                    - "{{HOST2}}"
+                    extraArgs:
+                         initial-cluster: {{NAMES[0]}}=https://{{HOST0}}:2380,{{NAMES[1]}}=https://{{HOST1}}:2380,{{NAMES[2]}}=https://{{HOST2}}:2380
+                         initial-cluster-state: new
+                         name: {{NAMES[2]}}
+                         listen-peer-urls: https://{{HOST2}}:2380
+                         listen-client-urls: https://{{HOST2}}:2379
+                         advertise-client-urls: https://{{HOST2}}:2379
+                         initial-advertise-peer-urls: https://{{HOST2}}:2380
+
+                         # EOF 
+    - name: Init phase certs
+      command: kubeadm init phase certs etcd-ca
+    
+
+    - name: Generate certificates for etcd-3
+      shell:
+        cmd: |
+                {{ item }}
+      with_items:
+         -  "kubeadm init phase certs etcd-server --config=/tmp/{{ETCDHOSTS[2]}}/kubeadmcfg.yaml" 
+         -  "kubeadm init phase certs etcd-peer --config=/tmp/{{ETCDHOSTS[2]}}/kubeadmcfg.yaml" 
+         -  "kubeadm init phase certs etcd-healthcheck-client --config=/tmp/{{ETCDHOSTS[2]}}/kubeadmcfg.yaml" 
+         -  "kubeadm init phase certs apiserver-etcd-client --config=/tmp/{{ETCDHOSTS[2]}}/kubeadmcfg.yaml" 
+         -  "cp -R /etc/kubernetes/pki /tmp/{{ETCDHOSTS[2]}}/" 
+         -  "find /etc/kubernetes/pki -not -name ca.crt -not -name ca.key -type f -delete"
+
+    - name: Generate certificates for etcd-2
+      shell:
+        cmd: |
+                {{item}}
+      with_items:
+         -  "kubeadm init phase certs etcd-server --config=/tmp/{{ETCDHOSTS[1]}}/kubeadmcfg.yaml"
+         -  "kubeadm init phase certs etcd-peer --config=/tmp/{{ETCDHOSTS[1]}}/kubeadmcfg.yaml"
+         -  "kubeadm init phase certs etcd-healthcheck-client --config=/tmp/{{ETCDHOSTS[1]}}/kubeadmcfg.yaml"
+         -  "kubeadm init phase certs apiserver-etcd-client --config=/tmp/{{ETCDHOSTS[1]}}/kubeadmcfg.yaml"
+         -  "cp -R /etc/kubernetes/pki /tmp/{{ETCDHOSTS[1]}}/"
+         -  "find /etc/kubernetes/pki -not -name ca.crt -not -name ca.key -type f -delete"
+
+    - name: Generate certificates for etcd-1
+      shell:
+        cmd: |
+                {{item}}
+      with_items:
+         -  "kubeadm init phase certs etcd-server --config=/tmp/{{ETCDHOSTS[0]}}/kubeadmcfg.yaml"
+         -  "kubeadm init phase certs etcd-peer --config=/tmp/{{ETCDHOSTS[0]}}/kubeadmcfg.yaml"
+         -  "kubeadm init phase certs etcd-healthcheck-client --config=/tmp/{{ETCDHOSTS[0]}}/kubeadmcfg.yaml"
+         -  "kubeadm init phase certs apiserver-etcd-client --config=/tmp/{{ETCDHOSTS[0]}}/kubeadmcfg.yaml"
+        
+    - name: clean up certs that should not be copied off this host
+      command: "{{item}}"
+      with_items:
+             - find /tmp/{{ETCDHOSTS[1]}} -name ca.key -type f -delete
+             - find /tmp/{{ETCDHOSTS[2]}} -name ca.key -type f -delete
+   
+  - hosts: kubevirt-etcd2,kubevirt-etcd3
+    tasks:
+    - name: creating directoy
+      file:
+        path: /root/pki/etcd
+        state: directory 
+     #copy certificates in etcd-1 to etcd-2
+  - hosts: etcd,master
+    tasks:
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/kubeadmcfg.yaml dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/kubeadmcfg.yaml dest=~/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}"
+
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/pki/apiserver-etcd-client.crt dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/apiserver-etcd-client.crt dest=~/pki/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}"
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/pki/apiserver-etcd-client.key dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/apiserver-etcd-client.key dest=~/pki/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}"
+    
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/pki/etcd/ca.crt dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/ca.crt dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}" 
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/pki/etcd/healthcheck-client.key dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/healthcheck-client.key dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}" 
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/pki/etcd/peer.key  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/peer.key  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}" 
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/pki/etcd/server.key  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/server.key  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}" 
+    
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/pki/etcd/healthcheck-client.crt  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/healthcheck-client.crt  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}"  
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/pki/etcd/peer.crt  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/peer.crt  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}" 
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.173/pki/etcd/server.crt  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd2
+      copy: src=/tmp/server.crt  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd2' }}" 
+      
+    # copy files from etcd-1 to etcd-3
+    
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/kubeadmcfg.yaml dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/kubeadmcfg.yaml dest=~/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}"
+
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/pki/apiserver-etcd-client.crt dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/apiserver-etcd-client.crt dest=~/pki/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}"
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/pki/apiserver-etcd-client.key dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/apiserver-etcd-client.key dest=~/pki/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}"
+    
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/pki/etcd/ca.crt dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/ca.crt dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}" 
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/pki/etcd/healthcheck-client.key dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/healthcheck-client.key dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}" 
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/pki/etcd/peer.key  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/peer.key  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}" 
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/pki/etcd/server.key  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/server.key  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}" 
+    
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/pki/etcd/healthcheck-client.crt  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/healthcheck-client.crt  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}"  
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/pki/etcd/peer.crt  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/peer.crt  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}" 
+       
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/tmp/10.26.37.185/pki/etcd/server.crt  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to etcd3
+      copy: src=/tmp/server.crt  dest=~/pki/etcd/
+      when: "{{ ansible_hostname == 'kubevirt-etcd3' }}" 
+
+    
+    # copy files from etcd1 to master
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/etc/kubernetes/pki/etcd/ca.crt  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to master
+      copy: src=/tmp/ca.crt  dest=~/
+      when: "{{ ansible_hostname == 'kubevirt-mas1' }}"
+      
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/etc/kubernetes/pki/apiserver-etcd-client.crt  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to master
+      copy: src=/tmp/apiserver-etcd-client.crt  dest=~/
+      when: "{{ ansible_hostname == 'kubevirt-mas1' }}"
+      
+    - name: Fetch the file from the etcd1 to host
+      run_once: yes
+      fetch: src=/etc/kubernetes/pki/apiserver-etcd-client.key  dest=/tmp/ flat=yes
+       
+    - name: Copy the file from host to master
+      copy: src=/tmp/apiserver-etcd-client.key  dest=~/
+      when: "{{ ansible_hostname == 'kubevirt-mas1' }}"
+   
+  - hosts: kubevirt-etcd1
+    become: yes
+    vars: 
+      HOST0 : 10.26.37.141
+      HOST1 : 10.26.37.173
+      HOST2 : 10.26.37.185
+      KUBEMAS : 10.26.37.193
+      ETCDHOSTS : [ "{{HOST0}}", "{{HOST1}}", "{{HOST2}}" ]
+      NAMES : [ "kubevirt-etcd1", "kubevirt-etcd2" ,"kubevirt-etcd3" ]  
+    
+    tasks:
+    - name: For local node kubeadm configuration
+      command: kubeadm init phase etcd local --config=/tmp/{{HOST0}}/kubeadmcfg.yaml
+    - name: Etcd 2
+      command : "{{item}}" 
+      with_items:
+          - ssh root@{{ETCDHOSTS[1]}} 'cd /root'
+          - ssh root@{{ETCDHOSTS[1]}} 'cp -r  ~/pki /etc/kubernetes/'
+          - ssh root@{{ETCDHOSTS[1]}} 'kubeadm init phase etcd local --config=/root/kubeadmcfg.yaml'   
+
+    - name: Etcd 3
+      command : "{{item}}"
+      with_items:
+          - ssh root@{{ETCDHOSTS[2]}} 'cd /root'
+          - ssh root@{{ETCDHOSTS[2]}} 'cp -r ~/pki /etc/kubernetes/'
+          - ssh root@{{ETCDHOSTS[2]}} 'kubeadm init phase etcd local --config=/root/kubeadmcfg.yaml'
+
+
+
+ 
+

@@ -1,0 +1,19 @@
+
+[workstation]
+kubevirt-wrkstn ansible_user=root ansible_host=10.26.37.199
+[master]
+kubevirt-mas1 ansible_user=root ansible_host=10.26.37.193
+kubevirt-mas2 ansible_user=root ansible_host=10.26.37.195
+kubevirt-mas3 ansible_user=root ansible_host=10.26.37.198
+[etcd]
+kubevirt-etcd1 ansible_user=root ansible_host=10.26.37.141
+kubevirt-etcd2 ansible_user=root ansible_host=10.26.37.173
+kubevirt-etcd3 ansible_user=root ansible_host=10.26.37.185
+[haproxy]
+kubevirt-lb1 ansible_user=root ansible_host=10.26.37.139
+kubevirt-lb2 ansible_user=root ansible_host=10.26.37.140
+[worker]
+kubevirt-worker1 ansible_user=root ansible_host=10.26.37.186
+kubevirt-worker2 ansible_user=root ansible_host=10.26.37.187
+kubevirt-worker3 ansible_user=root ansible_host=10.26.37.189
+kubevirt-worker4 ansible_user=root ansible_host=10.26.37.190

@@ -1,0 +1,109 @@
+---
+  - hosts: etcd
+    become: yes
+    tasks: 
+    - name: "APT - Add Docker GPG key"
+      apt_key:
+       url: https://download.docker.com/linux/ubuntu/gpg
+       state: present
+
+    - name: "APT - Add Docker repository"
+      apt_repository:
+       repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable"
+       state: present
+       filename: docker
+
+    - name: "APT - install misc packages"
+      apt:
+       name: "{{ item }}"
+       # update_cache: yes
+      with_items:
+       - "aptitude"
+       - "apt-transport-https"
+       - "ca-certificates"
+       - "curl"
+       - "software-properties-common"
+
+       
+    - name: "APT - install 'docker-ce'"
+      apt:
+       name: "docker-ce=18.06.1~ce~3-0~ubuntu"
+ 
+    - name: install APT Transport HTTPS
+      apt:
+        name: apt-transport-https
+        state: present
+
+    - name: add Kubernetes apt-key for APT repository
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: add Kubernetes APT repository
+      apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+        filename: 'kubernetes.list'
+
+  
+    - name: install kubelet
+      apt:
+       name: kubelet=1.16.0-00
+       state: present
+
+
+
+    - name: install kubeadm
+      apt:
+       name: kubeadm=1.16.0-00
+       state: present
+
+    - name: install kubelet-cni
+      apt:
+       name: kubernetes-cni=0.7.5-00
+       state: present
+
+
+  - hosts: etcd
+    become: yes
+    tasks:
+    - name: install kubectl
+      apt:
+        name: kubectl=1.16.0-00
+        state: present
+        force: yes
+    - name: Remove swapfile from /etc/fstab
+      mount:
+        name: "{{ item }}"
+        fstype: swap
+        state: absent
+      with_items:
+        - swap
+        - none
+
+    - name: kubehold
+      command: apt-mark hold kubelet kubeadm  docker-ce
+
+    - name: Disable swap
+      command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+
+    - name: adding etcd service
+      shell:
+        cmd: |
+          cat << EOF > /etc/systemd/system/kubelet.service.d/20-etcd-service-manager.conf
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/kubelet --address=127.0.0.1 --pod-manifest-path=/etc/kubernetes/manifests
+          Restart=always
+          EOF
+
+    - name: Wait 10 seconds
+      wait_for: timeout=10
+
+    - name: reload systemd
+      shell: "sudo systemctl daemon-reload"
+    
+    - name: reload systemd
+      shell: "sudo systemctl restart kubelet"
+     

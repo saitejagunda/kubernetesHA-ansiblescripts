@@ -1,0 +1,63 @@
+---
+  - hosts: kubevirt-mas2
+    become: yes
+    vars:
+       KUBEMAS2 : 10.26.37.195
+       KUBEMAS1: 10.26.37.193      
+    tasks:
+    - name: create directory
+      file: 
+        path: /etc/kubernetes/pki/etcd
+        state: directory      
+  
+        # - name: CREATING DIRECTORY IN MASTER 2
+        # command: ssh root@{{KUBEMAS2}} 'mkdir -p /etc/kubernetes/pki/etcd'
+
+    - name: Copy the file from master1 to master2 using Method Pull
+      synchronize:
+        src: "{{ item }}"
+        dest: /etc/kubernetes/pki/
+        mode: push
+      delegate_to: "{{KUBEMAS1}}" 
+      with_items:
+          - /etc/kubernetes/pki/ca.crt
+          - /etc/kubernetes/pki/ca.key
+          - /etc/kubernetes/pki/sa.key
+          - /etc/kubernetes/pki/sa.pub
+          - /etc/kubernetes/pki/front-proxy-ca.crt
+          - /etc/kubernetes/pki/front-proxy-ca.key
+          - /etc/kubernetes/pki/apiserver-etcd-client.crt
+          - /etc/kubernetes/pki/apiserver-etcd-client.key
+    
+    - name: Copy the ca.crt file from master1 to master2 using Method Pull
+      synchronize:
+        src: "{{ item }}" 
+        dest: /etc/kubernetes/pki/etcd/
+        mode: push
+      delegate_to: "{{KUBEMAS1}}"
+      with_items:
+          - /etc/kubernetes/pki/etcd/ca.crt
+
+    - name: Copy the admin file from master1 to master2 using Method Pull
+      synchronize:
+        src: "{{ item }}"
+        dest: /etc/kubernetes/
+        mode: push
+      delegate_to: "{{KUBEMAS1}}"
+      with_items:
+          - /etc/kubernetes/admin.conf
+  
+    - name: Copy the Master Join Token file from master1 to master2 using Method Pull
+      synchronize:
+        src: "{{ item }}"
+        dest: /root/
+        mode: push
+      delegate_to: "{{KUBEMAS1}}" 
+      with_items:
+          - /home/ubuntu/master-join-token.sh
+   
+    - name: Running join token for master 2
+      shell:
+            |
+              sh /root/master-join-token.sh
+

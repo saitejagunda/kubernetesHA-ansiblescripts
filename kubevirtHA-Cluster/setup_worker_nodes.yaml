@@ -1,0 +1,33 @@
+---
+  - hosts: worker
+    become: yes
+    vars:
+       KUBEMAS1 : 10.26.37.193
+    tasks:
+    - name: Copy the join token file from master1 to workers using Method Push
+      synchronize:
+        src: "{{ item }}"
+        dest: /root/
+        mode: push
+      delegate_to: "{{KUBEMAS1}}"
+      with_items:
+          - /home/ubuntu/Join-token.sh
+
+    - name: Run Join Token for Workers
+      shell:
+            |
+              sh /root/Join-token.sh
+
+  - hosts: kubevirt-mas1
+    become: yes
+    vars:
+       KUBEMAS1 : 10.26.37.193
+       WORKER_NAMES : ["kubevirt-worker1","kubevirt-worker2","kubevirt-worker3","kubevirt-worker4"]
+    tasks:
+    - name: Labelling Worker Nodes
+      shell:
+            |
+              kubectl label node "{{ item }}" node-role.kubernetes.io/worker=worker
+      with_items:
+           -   [ "{{WORKER_NAMES[0]}}","{{WORKER_NAMES[1]}}","{{WORKER_NAMES[2]}}","{{WORKER_NAMES[3]}}" ]
+

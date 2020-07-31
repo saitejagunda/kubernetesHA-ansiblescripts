@@ -1,0 +1,60 @@
+---
+  - hosts : kubevirt-lb1 
+    become : yes
+    tasks: 
+     - name: installing haproxy
+       apt: 
+        name :  haproxy
+        state: present
+        # update_cache: true
+     - name: save original config file
+       command: mv /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.orig
+                
+
+     - name: create new config file
+       shell: 
+         cmd : | 
+                cat <<EOF >/etc/haproxy/haproxy.cfg
+                global
+                  user haproxy
+                  group haproxy
+                defaults
+                  mode http
+                  log global
+                  retries 2
+                  timeout connect 6000ms
+                  timeout server 8000ms
+                  timeout client 8000ms
+                frontend kubernetes
+                  bind 10.26.37.139:80
+                  option tcplog
+                  mode tcp
+                  default_backend kubernetes-master-nodes
+                backend kubernetes-master-nodes
+                  mode tcp
+                  balance roundrobin
+                  option tcp-check
+                  server kubevirt-mas1 10.26.37.193:32000 check fall 3 rise 2
+                  server kubevirt-mas2 10.26.37.195:32000 check fall 3 rise 2
+                  server kubevirt-mas3 10.26.37.198:32000 check fall 3 rise 2
+
+                  #- name: save original config file
+       #template: src=/etc/haproxy/haproxy.cfg
+       #dest=/etc/haproxy/haproxy.cfg
+                #            backup=yes
+ 
+     - name: Enable net.ipv4.ip_nonlocal_bind sysctl option, to allow system services binding on the non local IP.          
+       shell: 
+         cmd : |
+                 cat <<EOF >>/etc/sysctl.conf
+                 net.ipv4.ip_nonlocal_bind=1
+                 EOF
+     - name: sysctl process checking
+       command: sysctl -p
+         
+     - name: Starting haproxy
+       systemd: 
+          name : haproxy
+          enabled: yes
+          state : started
+                      

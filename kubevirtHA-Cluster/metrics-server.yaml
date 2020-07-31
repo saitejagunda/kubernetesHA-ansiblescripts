@@ -1,0 +1,29 @@
+---
+  - hosts: kubevirt-mas1
+    become: yes
+    #vars: 
+    # workstation : 10.26.38.154
+    tasks:
+    - name: create directory
+      file:
+        path: /home/ubuntu/metrics-server
+        state: directory
+            
+    - git: 
+        repo: http://gitlab.azure.ril.com/Nabanita.Dewan/metrics-server.git
+        dest: /home/ubuntu/metrics-server
+        
+    - name: Run Metrics Server Files
+      command: "kubectl apply -f /home/ubuntu/metrics-server/{{item}}"
+      with_items:
+      - aggregated-metrics-reader.yaml
+      - auth-reader.yaml
+      - metrics-server-deployment.yaml
+      - resource-reader.yaml
+      - auth-delegator.yaml
+      - metrics-apiservice.yaml
+      - metrics-server-service.yaml
+      - cp-namespace.yaml
+      - mandetory.yaml
+      - service-nodeport.yaml  
+    
